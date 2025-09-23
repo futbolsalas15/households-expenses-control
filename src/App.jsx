@@ -98,13 +98,18 @@ export default function App(){
   return (
     <div className="container">
       <div className="card">
-        <div className="flex justify-between">
-          <div className="flex" style={{gap:16}}>
+        <div className="flex justify-between stack-on-mobile">
+          <div className="flex user-info" style={{gap:16}}>
             <div><strong>Hi, {user.displayName?.split(' ')[0]}</strong></div>
             <div className="small">({user.email})</div>
           </div>
-          <div className="flex" style={{gap:8}}>
-            <input placeholder="Partner email" value={partnerEmail} onChange={e=>setPartnerEmail(e.target.value)} style={{width:260}}/>
+          <div className="flex header-actions" style={{gap:8}}>
+            <input
+              className="filter-control"
+              placeholder="Partner email"
+              value={partnerEmail}
+              onChange={e=>setPartnerEmail(e.target.value)}
+            />
             <button onClick={logout}>Logout</button>
           </div>
         </div>
@@ -141,21 +146,28 @@ export default function App(){
                 ? `You owe partner $${Math.abs(balances.you.balance).toFixed(0)}`
                 : 'Even ✔︎'}
           </div>
-          <div className="flex" style={{marginTop:12, gap:8}}>
-            <label><input type="checkbox" checked={onlyThisMonth} onChange={()=>setOnlyThisMonth(v=>!v)} /> Only this month</label>
-            <select value={conciliadoFilter} onChange={e=>setConciliadoFilter(e.target.value)} style={{width:160}}>
+          <div className="flex filter-bar">
+            <label className="filter-checkbox"><input type="checkbox" checked={onlyThisMonth} onChange={()=>setOnlyThisMonth(v=>!v)} /> Only this month</label>
+            <select className="filter-control" value={conciliadoFilter} onChange={e=>setConciliadoFilter(e.target.value)}>
               <option value="all">All</option>
               <option value="yes">Conciliado</option>
               <option value="no">Pending</option>
             </select>
-            <input placeholder="Search description/category" value={search} onChange={e=>setSearch(e.target.value)} />
+            <input
+              className="filter-control"
+              placeholder="Search description/category"
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
       <div className="card">
         <h3>Expenses</h3>
-        <ExpenseTable rows={filtered} currentUser={user} />
+        <div className="table-responsive">
+          <ExpenseTable rows={filtered} currentUser={user} />
+        </div>
       </div>
     </div>
   )
