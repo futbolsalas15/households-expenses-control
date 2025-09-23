@@ -2,7 +2,7 @@ import React from 'react'
 import { deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 
-export default function ExpenseTable({ rows, currentUser }){
+export default function ExpenseTable({ rows, currentUser, onEdit }){
   async function handleDelete(id){
     const confirmDelete = window.confirm('Delete this expense? This cannot be undone.')
     if(!confirmDelete) return
@@ -40,13 +40,22 @@ export default function ExpenseTable({ rows, currentUser }){
             </td>
             <td className="py-3 pr-4 text-slate-600">{r.conciliado ? 'Yes' : 'No'}</td>
             <td className="py-3 text-right">
-              <button
-                type="button"
-                onClick={()=>handleDelete(r.id)}
-                className="inline-flex items-center rounded-lg border border-transparent px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-              >
-                Delete
-              </button>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={()=>onEdit?.(r)}
+                  className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={()=>handleDelete(r.id)}
+                  className="inline-flex items-center rounded-lg border border-transparent px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                >
+                  Delete
+                </button>
+              </div>
             </td>
           </tr>
         ))}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { weekLabelFromISO } from '../lib/calc'
 
@@ -7,7 +7,10 @@ function householdId(uid, partnerEmail){
   return [uid, (partnerEmail||'').toLowerCase().trim()].sort().join('__')
 }
 
-export default function ExpenseForm({ currentUser, partnerEmail }){
+const todayISO = () => new Date().toISOString().slice(0,10)
+
+export default function ExpenseForm({ currentUser, partnerEmail, editingExpense, onCancelEdit, onSubmitComplete }){
+  const isEditing = Boolean(editingExpense)
   const [date, setDate] = useState(new Date().toISOString().slice(0,10))
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('General')
@@ -17,12 +20,15 @@ export default function ExpenseForm({ currentUser, partnerEmail }){
   const [yourRatio, setYourRatio] = useState(0.5)
   const [payer, setPayer] = useState(currentUser.uid)
   const previousPartnerRef = useRef(partnerEmail)
+  const wasEditingRef = useRef(false)
 
   useEffect(()=>{
+    if(isEditing) return
     setPayer(currentUser.uid)
-  }, [currentUser.uid])
+  }, [currentUser.uid, isEditing])
 
   useEffect(()=>{
+    if(isEditing) return
     setPayer(prev => {
       if(prev === previousPartnerRef.current){
         return partnerEmail || currentUser.uid
@@ -30,16 +36,53 @@ export default function ExpenseForm({ currentUser, partnerEmail }){
       return prev
     })
     previousPartnerRef.current = partnerEmail
-  }, [partnerEmail, currentUser.uid])
+  }, [partnerEmail, currentUser.uid, isEditing])
+
+  useEffect(()=>{
+    if(editingExpense){
+      wasEditingRef.current = true
+      setDate(editingExpense.date || todayISO())
+      setDescription(editingExpense.description || '')
+      setCategory(editingExpense.category || 'General')
+      setCostCenter(editingExpense.costCenter || 'Shared')
+      setAmount(
+        editingExpense.amount != null
+          ? Number(editingExpense.amount).toString()
+          : ''
+      )
+      setConciliado(Boolean(editingExpense.conciliado))
+      const split = editingExpense.split || []
+      const youShare = split.find(s => s.uidOrEmail === currentUser.uid)?.ratio
+      setYourRatio(youShare != null ? Number(youShare) : 0.5)
+      setPayer(editingExpense.payerUid || currentUser.uid)
+      return
+    }
+    if(wasEditingRef.current){
+      wasEditingRef.current = false
+      resetForm()
+    }
+  }, [editingExpense, currentUser.uid])
+
+  function resetForm(){
+    setDate(todayISO())
+    setDescription('')
+    setCategory('General')
+    setCostCenter('Shared')
+    setAmount('')
+    setConciliado(false)
+    setYourRatio(0.5)
+    setPayer(currentUser.uid)
+  }
 
   async function onSubmit(e){
     e.preventDefault()
     if(!amount || !description) return
-    const doc = {
-      householdId: householdId(currentUser.uid, partnerEmail),
+    const base = {
       date,
       weekLabel: weekLabelFromISO(date),
-      description, category, costCenter,
+      description,
+      category,
+      costCenter,
       amount: Number(amount),
       conciliado,
       payerUid: payer,
@@ -47,12 +90,23 @@ export default function ExpenseForm({ currentUser, partnerEmail }){
         { uidOrEmail: currentUser.uid, ratio: Number(yourRatio) },
         { uidOrEmail: partnerEmail, ratio: Number((1 - yourRatio).toFixed(4)) }
       ],
-      createdBy: currentUser.uid,
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }
-    await addDoc(collection(db,'expenses'), doc)
-    setDescription(''); setAmount(''); setPayer(currentUser.uid)
+
+    if(isEditing){
+      const ref = doc(db, 'expenses', editingExpense.id)
+      await updateDoc(ref, base)
+      onSubmitComplete?.()
+    } else {
+      const payload = {
+        householdId: householdId(currentUser.uid, partnerEmail),
+        createdBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+        ...base
+      }
+      await addDoc(collection(db,'expenses'), payload)
+      resetForm()
+    }
   }
 
   return (
@@ -152,12 +206,23 @@ export default function ExpenseForm({ currentUser, partnerEmail }){
         <div className="mt-2 text-sm text-slate-500">Partner will get {(100 - yourRatio*100).toFixed(0)}%</div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-3">
+        {isEditing && (
+          <button
+            type="button"
+            onClick={()=>{
+              onCancelEdit?.()
+            }}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
           className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
         >
-          Add expense
+          {isEditing ? 'Save changes' : 'Add expense'}
         </button>
       </div>
     </form>

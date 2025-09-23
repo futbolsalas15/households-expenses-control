@@ -16,15 +16,29 @@ function stableHouseholdId(uid, partnerEmail){
 
 export default function App(){
   const { user, loading, loginWithGoogle, logout } = useAuth()
-  const [partnerEmail, setPartnerEmail] = useState(localStorage.getItem('partnerEmail') || 'cousin@example.com')
-  const [onlyThisMonth, setOnlyThisMonth] = useState(true)
+  const [partnerEmail, setPartnerEmail] = useState('')
+  const [onlyThisMonth, setOnlyThisMonth] = useState(false)
   const [conciliadoFilter, setConciliadoFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [expenses, setExpenses] = useState([])
+  const [editingExpense, setEditingExpense] = useState(null)
 
   useEffect(()=>{
+    if(!user) return
+    const fallback = user.email === 'futbolsalas15@gmail.com'
+      ? 'royalelminya@gmail.com'
+      : user.email === 'royalelminya@gmail.com'
+        ? 'futbolsalas15@gmail.com'
+        : 'cousin@example.com'
+    const stored = localStorage.getItem('partnerEmail')
+    const next = stored || fallback
+    setPartnerEmail(next)
+  }, [user])
+
+  useEffect(()=>{
+    if(!user || !partnerEmail) return
     localStorage.setItem('partnerEmail', partnerEmail)
-  }, [partnerEmail])
+  }, [partnerEmail, user])
 
   useEffect(()=>{
     if(!user) return
@@ -91,23 +105,21 @@ export default function App(){
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-col gap-1">
-              <p className="text-lg font-semibold text-slate-900">Hi, {user.displayName?.split(' ')[0]}</p>
+              <p className="text-lg font-semibold text-slate-900">Hi, {user.displayName?.split(' ')[0] || user.email}</p>
               <span className="text-sm text-slate-500">{user.email}</span>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-64"
-                placeholder="Partner email"
-                value={partnerEmail}
-                onChange={e=>setPartnerEmail(e.target.value)}
-              />
-              <button
-                onClick={logout}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
-              >
-                Logout
-              </button>
+            <div className="flex flex-col gap-1 sm:items-end">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Partner email</span>
+              <span className="rounded-xl border border-transparent bg-slate-100 px-3 py-2 text-sm text-slate-700 sm:min-w-[16rem]">
+                {partnerEmail}
+              </span>
             </div>
+            <button
+              onClick={logout}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              Logout
+            </button>
           </div>
         </div>
 
@@ -116,7 +128,13 @@ export default function App(){
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Add expense</h3>
             </div>
-            <ExpenseForm currentUser={user} partnerEmail={partnerEmail} />
+            <ExpenseForm
+              currentUser={user}
+              partnerEmail={partnerEmail}
+              editingExpense={editingExpense}
+              onCancelEdit={()=>setEditingExpense(null)}
+              onSubmitComplete={()=>setEditingExpense(null)}
+            />
           </div>
 
           <div className="flex flex-col gap-4">
@@ -182,7 +200,11 @@ export default function App(){
             <h3 className="text-lg font-semibold text-slate-900">Expenses</h3>
           </div>
           <div className="mt-4 overflow-x-auto">
-            <ExpenseTable rows={filtered} currentUser={user} />
+            <ExpenseTable
+              rows={filtered}
+              currentUser={user}
+              onEdit={expense=>setEditingExpense(expense)}
+            />
           </div>
         </div>
       </div>
