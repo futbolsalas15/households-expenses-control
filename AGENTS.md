@@ -10,7 +10,7 @@ This document is the single source of truth for the MVP scope, architecture, and
 Cloud app to track shared home expenses (you + cousin) with a lightweight stack: **React (Vite)** + **Firebase Auth** + **Cloud Firestore** (no complex backend). Default split is 50/50 but each expense can define custom ratios or N‑way splits when needed.
 
 ### Tech stack
-- **Frontend**: React 18 (Vite), minimal CSS
+- **Frontend**: React 18 (Vite) with Tailwind CSS utilities
 - **Auth**: Firebase Authentication (Google or Email/Password)
 - **Database**: Firestore (client SDK)
 - **Hosting**: Firebase Hosting / Vercel / Netlify (any static host)
@@ -233,6 +233,7 @@ npm run dev
 - Keep business logic (math, transformations) in `src/lib` and pure.
 - UI components are stateless where possible; forms manage their own local state.
 - Prefer Firestore batched writes for imports; validate/normalize inputs.
+- Styling lives in Tailwind utility classes; keep custom CSS limited to global resets in `src/styles.css`.
 - Commit messages: conventional commits (`feat:`, `fix:`, `chore:`).
 
 ---
