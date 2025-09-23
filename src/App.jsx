@@ -22,6 +22,19 @@ export default function App(){
   const [search, setSearch] = useState('')
   const [expenses, setExpenses] = useState([])
   const [editingExpense, setEditingExpense] = useState(null)
+  const [collapsedSections, setCollapsedSections] = useState({
+    header: true,
+    form: true,
+    balances: true,
+    expenses: false
+  })
+
+  function toggleSection(key){
+    setCollapsedSections(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }))
+  }
 
   useEffect(()=>{
     if(!user) return
@@ -103,7 +116,15 @@ export default function App(){
     <div className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <button
+            type="button"
+            onClick={()=>toggleSection('header')}
+            className="flex w-full items-center justify-between text-left text-sm font-semibold text-slate-700 sm:hidden"
+          >
+            <span>Household info</span>
+            <span>{collapsedSections.header ? 'Show' : 'Hide'}</span>
+          </button>
+          <div className={`${collapsedSections.header ? 'hidden' : 'block'} sm:block sm:flex sm:flex-col sm:gap-4 md:flex-row md:items-center md:justify-between`}>
             <div className="flex flex-col gap-1">
               <p className="text-lg font-semibold text-slate-900">Hi, {user.displayName?.split(' ')[0] || user.email}</p>
               <span className="text-sm text-slate-500">{user.email}</span>
@@ -127,69 +148,89 @@ export default function App(){
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Add expense</h3>
+              <button
+                type="button"
+                className="text-sm font-medium text-indigo-600 sm:hidden"
+                onClick={()=>toggleSection('form')}
+              >
+                {collapsedSections.form ? 'Show form' : 'Hide form'}
+              </button>
             </div>
-            <ExpenseForm
-              currentUser={user}
-              partnerEmail={partnerEmail}
-              editingExpense={editingExpense}
-              onCancelEdit={()=>setEditingExpense(null)}
-              onSubmitComplete={()=>setEditingExpense(null)}
-            />
+            <div className={`${collapsedSections.form ? 'hidden' : 'block'} sm:block`}>
+              <ExpenseForm
+                currentUser={user}
+                partnerEmail={partnerEmail}
+                editingExpense={editingExpense}
+                onCancelEdit={()=>setEditingExpense(null)}
+                onSubmitComplete={()=>setEditingExpense(null)}
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Balances {onlyThisMonth ? '(this month)' : '(all time)'}</h3>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">You</div>
-                  <div className="mt-2 space-y-1 text-sm text-slate-700">
-                    <div>Gasto: ${balances.you.gasto.toFixed(0)}</div>
-                    <div>Aporto: ${balances.you.aporto.toFixed(0)}</div>
-                    <div className="font-semibold text-slate-900">Balance: ${balances.you.balance.toFixed(0)}</div>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Partner</div>
-                  <div className="mt-2 space-y-1 text-sm text-slate-700">
-                    <div>Gasto: ${balances.partner.gasto.toFixed(0)}</div>
-                    <div>Aporto: ${balances.partner.aporto.toFixed(0)}</div>
-                    <div className="font-semibold text-slate-900">Balance: ${balances.partner.balance.toFixed(0)}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 text-sm text-slate-600">
-                {balances.you.balance > 0
-                  ? `Partner owes you $${balances.you.balance.toFixed(0)}`
-                  : balances.you.balance < 0
-                    ? `You owe partner $${Math.abs(balances.you.balance).toFixed(0)}`
-                    : 'Even ✔︎'}
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <label className="mr-4 flex items-center gap-2 text-sm text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={onlyThisMonth}
-                    onChange={()=>setOnlyThisMonth(prev=>!prev)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  Only this month
-                </label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-44"
-                  value={conciliadoFilter}
-                  onChange={e=>setConciliadoFilter(e.target.value)}
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">Balances {onlyThisMonth ? '(this month)' : '(all time)'}</h3>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-indigo-600 sm:hidden"
+                  onClick={()=>toggleSection('balances')}
                 >
-                  <option value="all">All</option>
-                  <option value="yes">Conciliado</option>
-                  <option value="no">Pending</option>
-                </select>
-                <input
-                  className="w-full flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                  placeholder="Search description/category"
-                  value={search}
-                  onChange={e=>setSearch(e.target.value)}
-                />
+                  {collapsedSections.balances ? 'Show' : 'Hide'}
+                </button>
+              </div>
+              <div className={`${collapsedSections.balances ? 'hidden' : 'block'} sm:block`}>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">You</div>
+                    <div className="mt-2 space-y-1 text-sm text-slate-700">
+                      <div>Gasto: ${balances.you.gasto.toFixed(0)}</div>
+                      <div>Aporto: ${balances.you.aporto.toFixed(0)}</div>
+                      <div className="font-semibold text-slate-900">Balance: ${balances.you.balance.toFixed(0)}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Partner</div>
+                    <div className="mt-2 space-y-1 text-sm text-slate-700">
+                      <div>Gasto: ${balances.partner.gasto.toFixed(0)}</div>
+                      <div>Aporto: ${balances.partner.aporto.toFixed(0)}</div>
+                      <div className="font-semibold text-slate-900">Balance: ${balances.partner.balance.toFixed(0)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 text-sm text-slate-600">
+                  {balances.you.balance > 0
+                    ? `Partner owes you $${balances.you.balance.toFixed(0)}`
+                    : balances.you.balance < 0
+                      ? `You owe partner $${Math.abs(balances.you.balance).toFixed(0)}`
+                      : 'Even ✔︎'}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <label className="mr-4 flex items-center gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={onlyThisMonth}
+                      onChange={()=>setOnlyThisMonth(prev=>!prev)}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Only this month
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-44"
+                    value={conciliadoFilter}
+                    onChange={e=>setConciliadoFilter(e.target.value)}
+                  >
+                    <option value="all">All</option>
+                    <option value="yes">Conciliado</option>
+                    <option value="no">Pending</option>
+                  </select>
+                  <input
+                    className="w-full flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    placeholder="Search description/category"
+                    value={search}
+                    onChange={e=>setSearch(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -198,13 +239,22 @@ export default function App(){
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-900">Expenses</h3>
+            <button
+              type="button"
+              className="text-sm font-medium text-indigo-600 sm:hidden"
+              onClick={()=>toggleSection('expenses')}
+            >
+              {collapsedSections.expenses ? 'Show' : 'Hide'}
+            </button>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <ExpenseTable
-              rows={filtered}
-              currentUser={user}
-              onEdit={expense=>setEditingExpense(expense)}
-            />
+          <div className={`${collapsedSections.expenses ? 'hidden' : 'block'} sm:block`}>
+            <div className="mt-4 overflow-x-auto">
+              <ExpenseTable
+                rows={filtered}
+                currentUser={user}
+                onEdit={expense=>setEditingExpense(expense)}
+              />
+            </div>
           </div>
         </div>
       </div>
