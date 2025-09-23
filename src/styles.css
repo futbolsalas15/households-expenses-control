@@ -13,3 +13,29 @@ th{font-weight:600;color:#374151}
 .flex{display:flex;align-items:center;gap:8px}
 .justify-between{justify-content:space-between}
 .small{font-size:12px;color:#6b7280}
+.stack-on-mobile{flex-wrap:wrap;gap:12px}
+.user-info{flex-wrap:wrap}
+.header-actions{flex-wrap:wrap;justify-content:flex-end}
+.header-actions input{flex:1 1 220px;min-width:200px}
+.header-actions button{width:auto}
+.filter-bar{flex-wrap:wrap;gap:8px;margin-top:12px}
+.filter-bar .filter-control{flex:1 1 200px;min-width:160px}
+.filter-bar select.filter-control{min-width:140px}
+.filter-checkbox{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:#374151}
+.filter-checkbox input{width:auto;margin:0}
+.table-responsive{width:100%;overflow-x:auto}
+.table-responsive table{min-width:640px}
+
+@media (max-width:768px){
+  .container{padding:16px}
+  .card{padding:14px}
+  .row{flex-direction:column}
+  .row > *{width:100%;flex:1 1 auto}
+  .stack-on-mobile{flex-direction:column;align-items:flex-start}
+  .header-actions{width:100%;justify-content:flex-start}
+  .header-actions input{min-width:0;flex:1 1 100%}
+  .filter-bar{flex-direction:column;align-items:stretch}
+  .filter-bar .filter-control{flex:none;width:100%}
+  .filter-checkbox{width:100%}
+  .table-responsive table{min-width:520px}
+}
