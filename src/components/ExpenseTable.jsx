@@ -1,6 +1,7 @@
 import React from 'react'
 import { deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { memberKeysForUser, normalizeMemberKey } from '../lib/identity'
 
 const currencyFormatter = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -22,16 +23,36 @@ function formatSignedCurrency(value){
   return `${prefix}${formatCurrency(abs)}`
 }
 
-function computeNetForUser(expense, currentUserId){
+function computeNetForUser(expense, yourKeys){
   const amount = Number(expense.amount || 0)
   const split = Array.isArray(expense.split) ? expense.split : []
-  const shareRatio = split.find(s => s.uidOrEmail === currentUserId)?.ratio ?? 0.5
+
+  let shareRatio = 0
+  let totalRatio = 0
+  for (const entry of split) {
+    const ratio = Number(entry?.ratio ?? 0)
+    if (!ratio) continue
+    totalRatio += ratio
+    const key = normalizeMemberKey(entry?.uidOrEmail)
+    if (yourKeys.has(key)) {
+      shareRatio += ratio
+    }
+  }
+
+  if (totalRatio > 0) {
+    shareRatio = Math.min(1, shareRatio / totalRatio)
+  } else {
+    shareRatio = 0.5
+  }
+
   const yourShare = amount * Number(shareRatio ?? 0)
-  const paidByYou = expense.payerUid === currentUserId ? amount : 0
+  const paidByYou = yourKeys.has(normalizeMemberKey(expense.payerUid)) ? amount : 0
   return paidByYou - yourShare
 }
 
 export default function ExpenseTable({ rows, currentUser, onEdit }){
+  const yourKeys = memberKeysForUser(currentUser)
+
   async function handleDelete(id){
     const confirmDelete = window.confirm('Delete this expense? This cannot be undone.')
     if(!confirmDelete) return
@@ -50,14 +71,14 @@ export default function ExpenseTable({ rows, currentUser, onEdit }){
               <th scope="col" className="py-3 pr-4">Cost center</th>
               <th scope="col" className="py-3 pr-4">Payer</th>
               <th scope="col" className="py-3 pr-4">Amount</th>
-              <th scope="col" className="py-3 pr-4">Net (you)</th>
+              <th scope="col" className="py-3 pr-4 text-right">Net (you)</th>
               <th scope="col" className="py-3 pr-4">Conciliado</th>
               <th scope="col" className="py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {rows.map(r => {
-              const netAmount = computeNetForUser(r, currentUser.uid)
+              const netAmount = computeNetForUser(r, yourKeys)
               const netClass = netAmount > 0
                 ? 'text-emerald-600'
                 : netAmount < 0
@@ -73,11 +94,11 @@ export default function ExpenseTable({ rows, currentUser, onEdit }){
                       {r.costCenter || '—'}
                     </span>
                   </td>
-                  <td className="py-3 pr-4 text-slate-600">{r.payerUid===currentUser.uid ? 'You' : r.payerUid || '—'}</td>
+                  <td className="py-3 pr-4 text-slate-600">{yourKeys.has(normalizeMemberKey(r.payerUid)) ? 'You' : r.payerUid || '—'}</td>
                   <td className="whitespace-nowrap py-3 pr-4 font-medium text-slate-900">
                     {formatCurrency(Number(r.amount || 0))}
                   </td>
-                  <td className={`whitespace-nowrap py-3 pr-4 font-semibold ${netClass}`}>
+                  <td className={`whitespace-nowrap py-3 pr-4 text-right font-semibold ${netClass}`}>
                     {formatSignedCurrency(netAmount)}
                   </td>
                   <td className="py-3 pr-4 text-slate-600">{r.conciliado ? 'Yes' : 'No'}</td>
@@ -108,7 +129,7 @@ export default function ExpenseTable({ rows, currentUser, onEdit }){
 
       <div className="space-y-3 sm:hidden">
         {rows.map(r => {
-          const netAmount = computeNetForUser(r, currentUser.uid)
+          const netAmount = computeNetForUser(r, yourKeys)
           const netClass = netAmount > 0
             ? 'text-emerald-600'
             : netAmount < 0
@@ -148,7 +169,7 @@ export default function ExpenseTable({ rows, currentUser, onEdit }){
                 </div>
                 <div className="flex justify-between">
                   <span className="font-medium text-slate-500">Payer</span>
-                  <span>{r.payerUid===currentUser.uid ? 'You' : r.payerUid || '—'}</span>
+                  <span>{yourKeys.has(normalizeMemberKey(r.payerUid)) ? 'You' : r.payerUid || '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-medium text-slate-500">Conciliado</span>

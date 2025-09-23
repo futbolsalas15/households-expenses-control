@@ -1,4 +1,5 @@
 import { parseISO } from 'date-fns'
+import { normalizeMemberKey, buildMemberKeySet } from './identity'
 
 export function weekLabelFromISO(dateISO){
   const d = parseISO(dateISO)
@@ -9,20 +10,66 @@ export function weekLabelFromISO(dateISO){
   return `${d.getFullYear()}-${w}`
 }
 
-export function computeBalances(expenses, youUid, partnerKey){
-  let you = { gasto:0, aporto:0 }, partner = { gasto:0, aporto:0 }
-  for(const e of expenses){
-    const split = e.split || []
-    const yourShare = split.find(s => s.uidOrEmail===youUid)?.ratio ?? 0.5
-    const partnerShare = split.find(s => s.uidOrEmail===partnerKey)?.ratio ?? (1 - yourShare)
+export function computeBalances(expenses, youKeys, partnerKeys){
+  const you = { gasto: 0, aporto: 0 }
+  const partner = { gasto: 0, aporto: 0 }
 
-    you.gasto += e.amount * yourShare
-    partner.gasto += e.amount * partnerShare
+  const youKeySet = youKeys instanceof Set ? youKeys : buildMemberKeySet(youKeys)
+  const partnerKeySet = partnerKeys instanceof Set
+    ? new Set(partnerKeys)
+    : buildMemberKeySet(partnerKeys)
 
-    if(e.payerUid === youUid) you.aporto += e.amount
-    if(e.payerUid === partnerKey) partner.aporto += e.amount
+  for (const e of expenses) {
+    const amount = Number(e.amount || 0)
+    if (!amount) continue
+
+    const split = Array.isArray(e.split) ? e.split : []
+    let yourShareRatio = 0
+    let partnerShareRatio = 0
+    let totalRatio = 0
+
+    for (const entry of split) {
+      const ratio = Number(entry?.ratio ?? 0)
+      if (!ratio) continue
+      totalRatio += ratio
+      const key = normalizeMemberKey(entry?.uidOrEmail)
+      if (youKeySet.has(key)) {
+        yourShareRatio += ratio
+      } else {
+        partnerShareRatio += ratio
+        if (key) partnerKeySet.add(key)
+      }
+    }
+
+    if (totalRatio > 0) {
+      yourShareRatio = Math.min(1, yourShareRatio / totalRatio)
+      partnerShareRatio = Math.min(1, partnerShareRatio / totalRatio)
+      const remainder = Math.max(0, 1 - (yourShareRatio + partnerShareRatio))
+      partnerShareRatio = Math.min(1, partnerShareRatio + remainder)
+    } else {
+      yourShareRatio = 0.5
+      partnerShareRatio = 0.5
+    }
+
+    const yourShareAmount = amount * yourShareRatio
+    const partnerShareAmount = amount * partnerShareRatio
+
+    you.gasto += yourShareAmount
+    partner.gasto += partnerShareAmount
+
+    const payerKey = normalizeMemberKey(e.payerUid)
+    if (youKeySet.has(payerKey)) {
+      you.aporto += amount
+    } else if (payerKey) {
+      partnerKeySet.add(payerKey)
+      partner.aporto += amount
+    }
   }
+
   const youBalance = you.aporto - you.gasto
   const partnerBalance = partner.aporto - partner.gasto
-  return { you:{...you, balance: youBalance}, partner:{...partner, balance: partnerBalance} }
+  return {
+    you: { ...you, balance: youBalance },
+    partner: { ...partner, balance: partnerBalance }
+  }
 }

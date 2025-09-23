@@ -1,18 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { db } from './firebase'
 import {
-  collection, onSnapshot, orderBy, query, where
+  collection, doc, onSnapshot, orderBy, query, updateDoc, where
 } from 'firebase/firestore'
 import ExpenseForm from './components/ExpenseForm'
 import ExpenseTable from './components/ExpenseTable'
 import { computeBalances } from './lib/calc'
-
-function stableHouseholdId(uid, partnerEmail){
-  const a = uid || ''
-  const b = (partnerEmail || '').toLowerCase().trim()
-  return [a,b].sort().join('__')
-}
+import {
+  emailHouseholdId,
+  legacyHouseholdId,
+  normalizeMemberKey,
+  memberKeysForUser,
+  buildMemberKeySet
+} from './lib/identity'
 
 export default function App(){
   const { user, loading, loginWithGoogle, logout } = useAuth()
@@ -28,6 +29,7 @@ export default function App(){
     balances: true,
     expenses: false
   })
+  const migratedIdsRef = useRef(new Set())
 
   function toggleSection(key){
     setCollapsedSections(prev => ({
@@ -55,16 +57,46 @@ export default function App(){
 
   useEffect(()=>{
     if(!user) return
-    const householdId = stableHouseholdId(user.uid, partnerEmail)
+    const normalizedPartner = normalizeMemberKey(partnerEmail)
+    if(!normalizedPartner) return
+
+    const emailBasedId = emailHouseholdId(user.email, partnerEmail)
+    const legacyId = legacyHouseholdId(user.uid, partnerEmail)
+    const ids = Array.from(new Set([emailBasedId, legacyId].filter(Boolean)))
+    if(ids.length === 0) return
+
     const col = collection(db, 'expenses')
-    const constraints = [ where('householdId','==',householdId), orderBy('date','desc') ]
-    const q = query(col, ...constraints)
+    const householdConstraint = ids.length === 1
+      ? where('householdId', '==', ids[0])
+      : where('householdId', 'in', ids)
+    const q = query(col, householdConstraint, orderBy('date','desc'))
     const unsub = onSnapshot(q, snap => {
       const rows = snap.docs.map(d => ({ id:d.id, ...d.data() }))
       setExpenses(rows)
     })
     return () => unsub()
-  }, [user, partnerEmail])
+  }, [user?.uid, user?.email, partnerEmail])
+
+  useEffect(()=>{
+    if(!user) return
+    const normalizedPartner = normalizeMemberKey(partnerEmail)
+    if(!normalizedPartner) return
+
+    const emailBasedId = emailHouseholdId(user.email, partnerEmail)
+    const legacyId = legacyHouseholdId(user.uid, partnerEmail)
+    if(!emailBasedId || !legacyId || emailBasedId === legacyId) return
+
+    const toMigrate = expenses.filter(e => e.householdId === legacyId)
+    if(!toMigrate.length) return
+
+    for(const exp of toMigrate){
+      if(migratedIdsRef.current.has(exp.id)) continue
+      migratedIdsRef.current.add(exp.id)
+      updateDoc(doc(db, 'expenses', exp.id), { householdId: emailBasedId }).catch(()=>{
+        migratedIdsRef.current.delete(exp.id)
+      })
+    }
+  }, [expenses, user?.uid, user?.email, partnerEmail])
 
   const filtered = useMemo(()=>{
     const now = new Date()
@@ -80,10 +112,16 @@ export default function App(){
     })
   }, [expenses, onlyThisMonth, conciliadoFilter, search])
 
+  const youKeys = useMemo(() => memberKeysForUser(user), [user?.uid, user?.email])
+  const partnerKeys = useMemo(
+    () => buildMemberKeySet(partnerEmail),
+    [partnerEmail]
+  )
+
   const balances = useMemo(()=>{
     if(!user) return {you:{gasto:0,aporto:0,balance:0}, partner:{gasto:0,aporto:0,balance:0}}
-    return computeBalances(filtered, user.uid, partnerEmail)
-  }, [filtered, user, partnerEmail])
+    return computeBalances(filtered, youKeys, partnerKeys)
+  }, [filtered, user, youKeys, partnerKeys])
 
   if(loading){
     return (

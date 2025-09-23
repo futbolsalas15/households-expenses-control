@@ -1,11 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { weekLabelFromISO } from '../lib/calc'
-
-function householdId(uid, partnerEmail){
-  return [uid, (partnerEmail||'').toLowerCase().trim()].sort().join('__')
-}
+import {
+  emailHouseholdId,
+  normalizeMemberKey,
+  primaryKeyForUser,
+  buildMemberKeySet,
+  legacyHouseholdId
+} from '../lib/identity'
 
 const todayISO = () => new Date().toISOString().slice(0,10)
 
@@ -18,25 +21,31 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
   const [amount, setAmount] = useState('')
   const [conciliado, setConciliado] = useState(false)
   const [yourRatio, setYourRatio] = useState(0.5)
-  const [payer, setPayer] = useState(currentUser.uid)
-  const previousPartnerRef = useRef(partnerEmail)
+  const yourPrimaryKey = primaryKeyForUser(currentUser)
+  const yourKeySet = useMemo(
+    () => buildMemberKeySet(currentUser?.uid, currentUser?.email, yourPrimaryKey),
+    [currentUser?.uid, currentUser?.email, yourPrimaryKey]
+  )
+  const partnerKey = normalizeMemberKey(partnerEmail)
+  const [payer, setPayer] = useState(yourPrimaryKey)
+  const previousPartnerRef = useRef(partnerKey)
   const wasEditingRef = useRef(false)
 
   useEffect(()=>{
     if(isEditing) return
-    setPayer(currentUser.uid)
-  }, [currentUser.uid, isEditing])
+    setPayer(yourPrimaryKey)
+  }, [yourPrimaryKey, isEditing])
 
   useEffect(()=>{
     if(isEditing) return
     setPayer(prev => {
       if(prev === previousPartnerRef.current){
-        return partnerEmail || currentUser.uid
+        return partnerKey || yourPrimaryKey
       }
       return prev
     })
-    previousPartnerRef.current = partnerEmail
-  }, [partnerEmail, currentUser.uid, isEditing])
+    previousPartnerRef.current = partnerKey
+  }, [partnerKey, yourPrimaryKey, isEditing])
 
   useEffect(()=>{
     if(editingExpense){
@@ -52,16 +61,23 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
       )
       setConciliado(Boolean(editingExpense.conciliado))
       const split = editingExpense.split || []
-      const youShare = split.find(s => s.uidOrEmail === currentUser.uid)?.ratio
+      const youShare = split.find(s => yourKeySet.has(normalizeMemberKey(s.uidOrEmail)))?.ratio
       setYourRatio(youShare != null ? Number(youShare) : 0.5)
-      setPayer(editingExpense.payerUid || currentUser.uid)
+      const normalizedPayer = normalizeMemberKey(editingExpense.payerUid)
+      if (yourKeySet.has(normalizedPayer)) {
+        setPayer(yourPrimaryKey)
+      } else if (normalizedPayer === partnerKey) {
+        setPayer(partnerKey)
+      } else {
+        setPayer(normalizedPayer || yourPrimaryKey)
+      }
       return
     }
     if(wasEditingRef.current){
       wasEditingRef.current = false
       resetForm()
     }
-  }, [editingExpense, currentUser.uid])
+  }, [editingExpense, partnerKey, yourKeySet, yourPrimaryKey])
 
   function resetForm(){
     setDate(todayISO())
@@ -71,12 +87,22 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
     setAmount('')
     setConciliado(false)
     setYourRatio(0.5)
-    setPayer(currentUser.uid)
+    setPayer(yourPrimaryKey)
   }
 
   async function onSubmit(e){
     e.preventDefault()
     if(!amount || !description) return
+    const yourRatioNumber = Number(yourRatio)
+    const partnerRatio = Number((1 - yourRatioNumber).toFixed(4))
+    const split = [
+      { uidOrEmail: yourPrimaryKey, ratio: yourRatioNumber }
+    ]
+
+    if (partnerKey) {
+      split.push({ uidOrEmail: partnerKey, ratio: partnerRatio })
+    }
+
     const base = {
       date,
       weekLabel: weekLabelFromISO(date),
@@ -86,10 +112,7 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
       amount: Number(amount),
       conciliado,
       payerUid: payer,
-      split: [
-        { uidOrEmail: currentUser.uid, ratio: Number(yourRatio) },
-        { uidOrEmail: partnerEmail, ratio: Number((1 - yourRatio).toFixed(4)) }
-      ],
+      split,
       updatedAt: serverTimestamp()
     }
 
@@ -99,14 +122,18 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
       onSubmitComplete?.()
     } else {
       const payload = {
-        householdId: householdId(currentUser.uid, partnerEmail),
-        createdBy: currentUser.uid,
+        householdId: emailHouseholdId(currentUser.email, partnerEmail) || legacyHouseholdIdFallback(),
+        createdBy: yourPrimaryKey,
         createdAt: serverTimestamp(),
         ...base
       }
       await addDoc(collection(db,'expenses'), payload)
       resetForm()
     }
+  }
+
+  function legacyHouseholdIdFallback(){
+    return legacyHouseholdId(currentUser.uid, partnerEmail)
   }
 
   return (
@@ -173,9 +200,9 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
             onChange={e=>setPayer(e.target.value)}
             className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           >
-            <option value={currentUser.uid}>You ({currentUser.displayName || currentUser.email})</option>
-            {partnerEmail && (
-              <option value={partnerEmail}>Partner ({partnerEmail})</option>
+            <option value={yourPrimaryKey || currentUser.uid}>You ({currentUser.displayName || currentUser.email})</option>
+            {partnerKey && partnerEmail && (
+              <option value={partnerKey}>Partner ({partnerEmail})</option>
             )}
           </select>
         </div>
