@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore'
 import ExpenseForm from './components/ExpenseForm'
 import ExpenseTable from './components/ExpenseTable'
+import CurrencyValue from './components/CurrencyValue'
 import { computeBalances } from './lib/calc'
 import {
   emailHouseholdId,
@@ -14,12 +15,12 @@ import {
   memberKeysForUser,
   buildMemberKeySet
 } from './lib/identity'
+import { formatCurrency } from './lib/currency'
 
 export default function App(){
   const { user, loading, loginWithGoogle, logout } = useAuth()
   const [partnerEmail, setPartnerEmail] = useState('')
-  const [onlyThisMonth, setOnlyThisMonth] = useState(false)
-  const [conciliadoFilter, setConciliadoFilter] = useState('all')
+  const [showConciliado, setShowConciliado] = useState(false)
   const [search, setSearch] = useState('')
   const [expenses, setExpenses] = useState([])
   const [editingExpense, setEditingExpense] = useState(null)
@@ -99,18 +100,12 @@ export default function App(){
   }, [expenses, user?.uid, user?.email, partnerEmail])
 
   const filtered = useMemo(()=>{
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    const startOfMonth = new Date(year, month, 1).toISOString().slice(0,10)
     return expenses.filter(e=>{
-      if(onlyThisMonth && e.date < startOfMonth) return false
-      if(conciliadoFilter==='yes' && !e.conciliado) return false
-      if(conciliadoFilter==='no' && e.conciliado) return false
+      if(!showConciliado && e.conciliado) return false
       if(search && !(`${e.description} ${e.category}`.toLowerCase().includes(search.toLowerCase()))) return false
       return true
     })
-  }, [expenses, onlyThisMonth, conciliadoFilter, search])
+  }, [expenses, showConciliado, search])
 
   const youKeys = useMemo(() => memberKeysForUser(user), [user?.uid, user?.email])
   const partnerKeys = useMemo(
@@ -118,10 +113,12 @@ export default function App(){
     [partnerEmail]
   )
 
+  const balanceSource = useMemo(() => filtered.filter(e => !e.conciliado), [filtered])
+
   const balances = useMemo(()=>{
     if(!user) return {you:{gasto:0,aporto:0,balance:0}, partner:{gasto:0,aporto:0,balance:0}}
-    return computeBalances(filtered, youKeys, partnerKeys)
-  }, [filtered, user, youKeys, partnerKeys])
+    return computeBalances(balanceSource, youKeys, partnerKeys)
+  }, [balanceSource, user, youKeys, partnerKeys])
 
   if(loading){
     return (
@@ -182,7 +179,7 @@ export default function App(){
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Add expense</h3>
@@ -208,7 +205,7 @@ export default function App(){
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-slate-900">Balances {onlyThisMonth ? '(this month)' : '(all time)'}</h3>
+                <h3 className="text-lg font-semibold text-slate-900">Balances (all time)</h3>
                 <button
                   type="button"
                   className="text-sm font-medium text-indigo-600 sm:hidden"
@@ -221,54 +218,61 @@ export default function App(){
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">You</div>
-                    <div className="mt-2 space-y-1 text-sm text-slate-700">
-                      <div>Gasto: ${balances.you.gasto.toFixed(0)}</div>
-                      <div>Aporto: ${balances.you.aporto.toFixed(0)}</div>
-                      <div className="font-semibold text-slate-900">Balance: ${balances.you.balance.toFixed(0)}</div>
+                    <div className="mt-3 space-y-2 text-sm text-slate-600">
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Gasto</span>
+                        <CurrencyValue value={balances.you.gasto} className="block text-right font-semibold text-slate-900 tabular-nums" />
+                      </div>
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Aporto</span>
+                        <CurrencyValue value={balances.you.aporto} className="block text-right font-semibold text-slate-900 tabular-nums" />
+                      </div>
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Balance</span>
+                        <CurrencyValue value={balances.you.balance} signed className="block text-right font-semibold tabular-nums" />
+                      </div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Partner</div>
-                    <div className="mt-2 space-y-1 text-sm text-slate-700">
-                      <div>Gasto: ${balances.partner.gasto.toFixed(0)}</div>
-                      <div>Aporto: ${balances.partner.aporto.toFixed(0)}</div>
-                      <div className="font-semibold text-slate-900">Balance: ${balances.partner.balance.toFixed(0)}</div>
+                    <div className="mt-3 space-y-2 text-sm text-slate-600">
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Gasto</span>
+                        <CurrencyValue value={balances.partner.gasto} className="block text-right font-semibold text-slate-900 tabular-nums" />
+                      </div>
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Aporto</span>
+                        <CurrencyValue value={balances.partner.aporto} className="block text-right font-semibold text-slate-900 tabular-nums" />
+                      </div>
+                      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-4">
+                        <span>Balance</span>
+                        <CurrencyValue value={balances.partner.balance} signed className="block text-right font-semibold tabular-nums" />
+                      </div>
                     </div>
                   </div>
                 </div>
                 <div className="mt-4 text-sm text-slate-600">
-                  {balances.you.balance > 0
-                    ? `Partner owes you $${balances.you.balance.toFixed(0)}`
-                    : balances.you.balance < 0
-                      ? `You owe partner $${Math.abs(balances.you.balance).toFixed(0)}`
-                      : 'Even ✔︎'}
+                  {balances.you.balance > 0 ? (
+                    <span>
+                      Partner owes you{' '}
+                      <CurrencyValue
+                        value={balances.you.balance}
+                        signed
+                        className="font-semibold tabular-nums"
+                      />
+                    </span>
+                  ) : balances.you.balance < 0 ? (
+                    <span>
+                      You owe partner{' '}
+                      <CurrencyValue
+                        value={balances.you.balance}
+                        signed
+                        className="font-semibold tabular-nums"
+                      />
+                    </span>
+                  ) : 'Even ✔︎'}
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <label className="mr-4 flex items-center gap-2 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={onlyThisMonth}
-                      onChange={()=>setOnlyThisMonth(prev=>!prev)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Only this month
-                  </label>
-                  <select
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-44"
-                    value={conciliadoFilter}
-                    onChange={e=>setConciliadoFilter(e.target.value)}
-                  >
-                    <option value="all">All</option>
-                    <option value="yes">Conciliado</option>
-                    <option value="no">Pending</option>
-                  </select>
-                  <input
-                    className="w-full flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    placeholder="Search description/category"
-                    value={search}
-                    onChange={e=>setSearch(e.target.value)}
-                  />
-                </div>
+                <div className="mt-4 text-sm text-slate-500">Search expenses below to refine the table view.</div>
               </div>
             </div>
           </div>
@@ -286,6 +290,17 @@ export default function App(){
             </button>
           </div>
           <div className={`${collapsedSections.expenses ? 'hidden' : 'block'} sm:block`}>
+            <div className="mt-4 flex items-center gap-3 text-sm text-slate-600">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showConciliado}
+                  onChange={()=>setShowConciliado(prev=>!prev)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                Include conciliado
+              </label>
+            </div>
             <div className="mt-4 overflow-x-auto">
               <ExpenseTable
                 rows={filtered}

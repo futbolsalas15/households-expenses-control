@@ -11,12 +11,19 @@ import {
 } from '../lib/identity'
 
 const todayISO = () => new Date().toISOString().slice(0,10)
+const CATEGORY_OPTIONS = [
+  'Mercado',
+  'Viajes',
+  'Gastos Personales',
+  'Comida Rapida',
+  'Servicios'
+]
 
 export default function ExpenseForm({ currentUser, partnerEmail, editingExpense, onCancelEdit, onSubmitComplete }){
   const isEditing = Boolean(editingExpense)
   const [date, setDate] = useState(new Date().toISOString().slice(0,10))
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('General')
+  const [category, setCategory] = useState(CATEGORY_OPTIONS[0])
   const [costCenter, setCostCenter] = useState('Shared')
   const [amount, setAmount] = useState('')
   const [conciliado, setConciliado] = useState(false)
@@ -26,6 +33,24 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
     () => buildMemberKeySet(currentUser?.uid, currentUser?.email, yourPrimaryKey),
     [currentUser?.uid, currentUser?.email, yourPrimaryKey]
   )
+  const yourCostCenterValue = currentUser?.email || yourPrimaryKey
+  const partnerCostCenterValue = partnerEmail || ''
+  const costCenterOptions = useMemo(() => {
+    const options = [{ value: 'Shared', label: 'Shared' }]
+    if (yourCostCenterValue) {
+      const youLabel = currentUser?.displayName
+        ? `You (${currentUser.displayName})`
+        : `You (${currentUser?.email || 'You'})`
+      options.push({ value: yourCostCenterValue, label: youLabel })
+    }
+    if (partnerCostCenterValue) {
+      options.push({
+        value: partnerCostCenterValue,
+        label: `Partner (${partnerEmail})`
+      })
+    }
+    return options
+  }, [yourCostCenterValue, partnerCostCenterValue, currentUser?.displayName, currentUser?.email, partnerEmail])
   const partnerKey = normalizeMemberKey(partnerEmail)
   const [payer, setPayer] = useState(yourPrimaryKey)
   const previousPartnerRef = useRef(partnerKey)
@@ -52,7 +77,7 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
       wasEditingRef.current = true
       setDate(editingExpense.date || todayISO())
       setDescription(editingExpense.description || '')
-      setCategory(editingExpense.category || 'General')
+      setCategory(editingExpense.category || CATEGORY_OPTIONS[0])
       setCostCenter(editingExpense.costCenter || 'Shared')
       setAmount(
         editingExpense.amount != null
@@ -79,10 +104,30 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
     }
   }, [editingExpense, partnerKey, yourKeySet, yourPrimaryKey])
 
+  useEffect(() => {
+    const auto = autoRatioFor(costCenter, payer)
+    if (auto == null) return
+    setYourRatio(prev => (prev === auto ? prev : auto))
+  }, [costCenter, payer, yourPrimaryKey, partnerKey, yourCostCenterValue, partnerCostCenterValue])
+
+  function autoRatioFor(selectedCostCenter, selectedPayer){
+    if (!selectedCostCenter) return null
+    if (selectedCostCenter === 'Shared') return 0.5
+    if (yourCostCenterValue && selectedCostCenter === yourCostCenterValue) {
+      if (selectedPayer && selectedPayer !== yourPrimaryKey) return 0
+      return 1
+    }
+    if (partnerCostCenterValue && selectedCostCenter === partnerCostCenterValue) {
+      if (selectedPayer === yourPrimaryKey) return 1
+      return 0
+    }
+    return null
+  }
+
   function resetForm(){
     setDate(todayISO())
     setDescription('')
-    setCategory('General')
+    setCategory(CATEGORY_OPTIONS[0])
     setCostCenter('Shared')
     setAmount('')
     setConciliado(false)
@@ -162,12 +207,18 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <div className="flex flex-col">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category</label>
-          <input
+          <select
             value={category}
             onChange={e=>setCategory(e.target.value)}
-            placeholder="e.g. Market"
-            className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          />
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          >
+            {CATEGORY_OPTIONS.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+            {!CATEGORY_OPTIONS.includes(category) && (
+              <option value={category}>{category}</option>
+            )}
+          </select>
         </div>
         <div className="flex flex-col">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cost center</label>
@@ -176,10 +227,12 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
             onChange={e=>setCostCenter(e.target.value)}
             className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           >
-            <option>Shared</option>
-            <option>Juan</option>
-            <option>Maruja</option>
-            <option>Other</option>
+            {costCenterOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+            {!costCenterOptions.some(option => option.value === costCenter) && costCenter && (
+              <option value={costCenter}>{costCenter}</option>
+            )}
           </select>
         </div>
         <div className="flex flex-col">
@@ -206,17 +259,6 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
             )}
           </select>
         </div>
-        <div className="flex flex-col">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conciliado</label>
-          <select
-            value={conciliado ? 'yes' : 'no'}
-            onChange={e=>setConciliado(e.target.value==='yes')}
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <option value="no">No</option>
-            <option value="yes">Yes</option>
-          </select>
-        </div>
       </div>
 
       <div>
@@ -228,7 +270,8 @@ export default function ExpenseForm({ currentUser, partnerEmail, editingExpense,
           step="0.05"
           value={yourRatio}
           onChange={e=>setYourRatio(Number(e.target.value))}
-          className="mt-3 w-full accent-indigo-600"
+          disabled={costCenter === 'Shared'}
+          className={`mt-3 w-full accent-indigo-600 ${costCenter === 'Shared' ? 'cursor-not-allowed opacity-60' : ''}`}
         />
         <div className="mt-2 text-sm text-slate-500">Partner will get {(100 - yourRatio*100).toFixed(0)}%</div>
       </div>
